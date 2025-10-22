@@ -297,8 +297,8 @@ func buildSelector(kind device.Kind) (*mediadevices.CodecSelector, error) {
 		if err != nil {
 			return nil, fmt.Errorf("configure opus: %w", err)
 		}
-		opusParams.BitRate = 64000
-		opusParams.Application = opus.ApplicationAudio
+		opusParams.BitRate = 64_000
+		opusParams.Latency = opus.Latency20ms
 		opts = append(opts, mediadevices.WithAudioEncoders(&opusParams))
 	case device.KindVideo, device.KindDesktop:
 		vp8Params, err := vpx.NewVP8Params()
