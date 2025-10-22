@@ -1,1 +1,70 @@
-# live-1
+# live-1 Publisher Client
+
+This repository contains a reference Go implementation of the Windows capture client described in the product brief. The binary registers its capture capabilities with the orchestration backend, polls for start/stop commands, and establishes WHIP sessions with the streaming gateway for each requested track.
+
+## Features
+
+* Automatic device discovery on Windows via DirectShow, with manifest overrides and cross-platform fallbacks.
+* Backend integration: `POST /register` and `GET /command/{client_id}`.
+* Per-track WHIP session management with graceful teardown.
+* Environment variable configuration for backend, gateway, and secrets.
+
+> **Note:** On non-Windows targets the WHIP layer falls back to a placeholder SDP. Full media capture requires running the binary on Windows with the prerequisites listed below.
+
+## Getting Started
+
+```bash
+# Build the binary
+GOOS=windows GOARCH=amd64 go build -o bin/publisher.exe ./cmd/publisher
+
+# Or run locally (uses defaults from the specification)
+go run ./cmd/publisher
+```
+
+### Configuration
+
+| Environment Variable | Description                                                    | Default                      |
+| -------------------- | -------------------------------------------------------------- | ---------------------------- |
+| `CLIENT_ID`          | Unique identifier for this client instance.                    | `my-golang-publisher-1`      |
+| `BACKEND_URL`        | Base URL of the orchestration backend.                         | `http://localhost:8080`      |
+| `POLL_INTERVAL`      | Interval between command polling attempts.                     | `5s`                         |
+| `HTTP_TIMEOUT`       | Timeout applied to outbound HTTP requests.                     | `10s`                        |
+| `WHIP_BASE_URL`      | Base WHIP endpoint (including `?app=` query).                  | `http://192.168.123.21:2022/rtc/v1/whip/?app=live` |
+| `WHIP_SECRET`        | Shared secret appended to WHIP requests.                       | `6a9df1a76bc242f8adb8a309fa78fe92` |
+| `STREAM_KEY_VIDEO`   | Stream key for camera tracks.                                  | `cama`                       |
+| `STREAM_KEY_DESKTOP` | Stream key for desktop tracks.                                 | `desktop`                    |
+| `STREAM_KEY_AUDIO`   | Stream key for microphone tracks.                              | `audio`                      |
+| `DEVICES_MANIFEST`   | Optional path to a JSON file describing available devices.     | _Built-in defaults_          |
+| `DISABLE_DESKTOP`    | Set to `true`/`1` to omit the synthetic desktop entry.         | `false`                      |
+
+### Windows prerequisites
+
+Real media capture on Windows relies on [`pion/mediadevices`](https://github.com/pion/mediadevices) encoders. Install the following 64-bit runtime libraries and ensure they are discoverable via `PATH` when building or running:
+
+* [libvpx](https://chromium.googlesource.com/webm/libvpx) — VP8 encoder
+* [libopus](https://opus-codec.org/) — Opus audio encoder
+
+### Device Manifest Format
+
+When `DEVICES_MANIFEST` is set, it must point to a JSON array containing objects with the following structure:
+
+```json
+[
+  { "uid": "device-unique-id-1", "kind": "video",   "label": "Front Camera" },
+  { "uid": "device-unique-id-2", "kind": "audio",   "label": "USB Mic" },
+  { "uid": "desktop-0",          "kind": "desktop", "label": "Screen Share" }
+]
+```
+
+Invalid entries are ignored. When the file is missing or empty the client falls back to enumerated devices (on Windows) or the built-in defaults (other platforms).
+
+## Command Handling
+
+* `start`: deduplicates tracks by `(kind, uid)` and launches WHIP sessions for each new track.
+* `stop`: gracefully tears down all active tracks.
+* Unknown commands are logged and ignored.
+
+## Limitations
+
+* On non-Windows platforms the WHIP implementation still uses a placeholder SDP, so media is not published.
+* Screen capture relies on the experimental screen driver exposed by `mediadevices` and may prompt the user for capture consent depending on the environment.
